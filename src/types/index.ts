@@ -104,3 +104,46 @@ export const STATUS_TEXT_COLORS: Record<RainGearStatus, string> = {
   needClean: 'text-blue-400',
   closed: 'text-gray-400',
 };
+
+export type RestockStatus = 'pending' | 'processing' | 'completed';
+
+export interface RestockRecord {
+  id: number;
+  gearId: number;
+  sourceTaskId?: number;
+  gapQuantity: number;
+  plannedQuantity: number;
+  handler: string;
+  note: string;
+  estimatedCompletionTime: string;
+  actualCompletionTime: string;
+  status: RestockStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RestockFilterOptions {
+  responsiblePerson: string;
+  cabinetNo: string;
+  statuses: RestockStatus[];
+  gearStatuses: RainGearStatus[];
+  showOverdueOnly: boolean;
+}
+
+export const RESTOCK_STATUS_LABELS: Record<RestockStatus, string> = {
+  pending: '待处理',
+  processing: '处理中',
+  completed: '已完成',
+};
+
+export const RESTOCK_STATUS_COLORS: Record<RestockStatus, string> = {
+  pending: 'bg-orange-500',
+  processing: 'bg-blue-500',
+  completed: 'bg-emerald-500',
+};
+
+export const RESTOCK_STATUS_TEXT_COLORS: Record<RestockStatus, string> = {
+  pending: 'text-orange-400',
+  processing: 'text-blue-400',
+  completed: 'text-emerald-400',
+};

@@ -1,13 +1,14 @@
 import { openDB } from 'idb';
 import type { IDBPDatabase } from 'idb';
-import type { RainGear, ModifyHistory, InventoryTask, TaskCheckRecord } from '@/types';
+import type { RainGear, ModifyHistory, InventoryTask, TaskCheckRecord, RestockRecord } from '@/types';
 
 const DB_NAME = 'rain_gear_db';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_GEARS = 'rain_gears';
 const STORE_HISTORY = 'modify_history';
 const STORE_TASKS = 'inventory_tasks';
 const STORE_CHECK_RECORDS = 'task_check_records';
+const STORE_RESTOCK_RECORDS = 'restock_records';
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
@@ -53,6 +54,19 @@ function initDB(): Promise<IDBPDatabase> {
           checkStore.createIndex('taskId', 'taskId', { unique: false });
           checkStore.createIndex('gearId', 'gearId', { unique: false });
           checkStore.createIndex('checkStatus', 'checkStatus', { unique: false });
+        }
+      }
+
+      if (oldVersion < 3) {
+        if (!db.objectStoreNames.contains(STORE_RESTOCK_RECORDS)) {
+          const restockStore = db.createObjectStore(STORE_RESTOCK_RECORDS, {
+            keyPath: 'id',
+            autoIncrement: true,
+          });
+          restockStore.createIndex('gearId', 'gearId', { unique: false });
+          restockStore.createIndex('status', 'status', { unique: false });
+          restockStore.createIndex('createdAt', 'createdAt', { unique: false });
+          restockStore.createIndex('sourceTaskId', 'sourceTaskId', { unique: false });
         }
       }
     },
@@ -133,7 +147,8 @@ export function useIndexedDB() {
     const history = await getRecentHistory(1000);
     const tasks = await getAllTasks();
     const checkRecords = await getAllCheckRecords();
-    return JSON.stringify({ gears, history, tasks, checkRecords }, null, 2);
+    const restockRecords = await getAllRestockRecords();
+    return JSON.stringify({ gears, history, tasks, checkRecords, restockRecords }, null, 2);
   };
 
   const importData = async (jsonStr: string): Promise<{ success: number; failed: number }> => {
@@ -228,6 +243,50 @@ export function useIndexedDB() {
     await tx.done;
   };
 
+  const getAllRestockRecords = async (): Promise<RestockRecord[]> => {
+    const result = await (await db).getAll(STORE_RESTOCK_RECORDS);
+    return result as RestockRecord[];
+  };
+
+  const getRestockRecordsByGear = async (gearId: number): Promise<RestockRecord[]> => {
+    const tx = (await db).transaction(STORE_RESTOCK_RECORDS, 'readonly');
+    const store = tx.store;
+    const index = store.index('gearId');
+    const result: RestockRecord[] = [];
+
+    let cursor = await index.openCursor(gearId);
+    while (cursor) {
+      result.push(cursor.value as RestockRecord);
+      cursor = await cursor.continue();
+    }
+
+    await tx.done;
+    return result;
+  };
+
+  const addRestockRecord = async (record: Omit<RestockRecord, 'id'>): Promise<number> => {
+    return (await db).add(STORE_RESTOCK_RECORDS, record) as Promise<number>;
+  };
+
+  const updateRestockRecord = async (record: RestockRecord): Promise<void> => {
+    await (await db).put(STORE_RESTOCK_RECORDS, record);
+  };
+
+  const deleteRestockRecord = async (id: number): Promise<void> => {
+    await (await db).delete(STORE_RESTOCK_RECORDS, id);
+  };
+
+  const bulkAddRestockRecords = async (records: Omit<RestockRecord, 'id'>[]): Promise<void> => {
+    const tx = (await db).transaction(STORE_RESTOCK_RECORDS, 'readwrite');
+    const store = tx.store;
+
+    for (const record of records) {
+      await store.add(record);
+    }
+
+    await tx.done;
+  };
+
   return {
     getAllGears,
     addGear,
@@ -249,5 +308,11 @@ export function useIndexedDB() {
     updateCheckRecord,
     bulkAddCheckRecords,
     deleteCheckRecordsByTask,
+    getAllRestockRecords,
+    getRestockRecordsByGear,
+    addRestockRecord,
+    updateRestockRecord,
+    deleteRestockRecord,
+    bulkAddRestockRecords,
   };
 }

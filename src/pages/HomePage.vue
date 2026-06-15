@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted } from 'vue';
-import { Umbrella, ClipboardList } from 'lucide-vue-next';
+import { Umbrella, ClipboardList, Package } from 'lucide-vue-next';
 import { useRouter } from 'vue-router';
 import { useRainGearStore } from '@/composables/useRainGearStore';
 import SummaryPanel from '@/components/SummaryPanel.vue';
@@ -107,6 +107,13 @@ onMounted(() => {
             <p class="text-sm text-gray-400">实时监控库存缺口，明确管理责任</p>
           </div>
           <div class="flex-1"></div>
+          <button
+            class="flex items-center gap-2 px-4 py-2 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 rounded-lg text-sm font-medium transition-all border border-emerald-500/30 hover:border-emerald-400/50"
+            @click="router.push('/restock')"
+          >
+            <Package class="w-4 h-4" />
+            缺口补货闭环
+          </button>
           <button
             class="flex items-center gap-2 px-4 py-2 bg-violet-600/20 hover:bg-violet-600/30 text-violet-300 rounded-lg text-sm font-medium transition-all border border-violet-500/30 hover:border-violet-400/50"
             @click="router.push('/tasks')"
