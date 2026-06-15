@@ -1,7 +1,8 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import HomePage from '@/pages/HomePage.vue'
+import TaskListPage from '@/pages/TaskListPage.vue'
+import TaskDetailPage from '@/pages/TaskDetailPage.vue'
 
-// 定义路由配置
 const routes = [
   {
     path: '/',
@@ -9,15 +10,17 @@ const routes = [
     component: HomePage,
   },
   {
-    path: '/about',
-    name: 'about',
-    component: {
-      template: '<div class="text-center text-xl p-8">About Page - Coming Soon</div>',
-    },
+    path: '/tasks',
+    name: 'taskList',
+    component: TaskListPage,
+  },
+  {
+    path: '/tasks/:id',
+    name: 'taskDetail',
+    component: TaskDetailPage,
   },
 ]
 
-// 创建路由实例
 const router = createRouter({
   history: createWebHistory(),
   routes,

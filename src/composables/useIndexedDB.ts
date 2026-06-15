@@ -1,11 +1,13 @@
 import { openDB } from 'idb';
 import type { IDBPDatabase } from 'idb';
-import type { RainGear, ModifyHistory } from '@/types';
+import type { RainGear, ModifyHistory, InventoryTask, TaskCheckRecord } from '@/types';
 
 const DB_NAME = 'rain_gear_db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_GEARS = 'rain_gears';
 const STORE_HISTORY = 'modify_history';
+const STORE_TASKS = 'inventory_tasks';
+const STORE_CHECK_RECORDS = 'task_check_records';
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
@@ -13,7 +15,7 @@ function initDB(): Promise<IDBPDatabase> {
   if (dbPromise) return dbPromise;
 
   dbPromise = openDB(DB_NAME, DB_VERSION, {
-    upgrade(db) {
+    upgrade(db, oldVersion) {
       if (!db.objectStoreNames.contains(STORE_GEARS)) {
         const gearStore = db.createObjectStore(STORE_GEARS, {
           keyPath: 'id',
@@ -31,6 +33,27 @@ function initDB(): Promise<IDBPDatabase> {
         });
         historyStore.createIndex('recordId', 'recordId', { unique: false });
         historyStore.createIndex('modifiedAt', 'modifiedAt', { unique: false });
+      }
+
+      if (oldVersion < 2) {
+        if (!db.objectStoreNames.contains(STORE_TASKS)) {
+          const taskStore = db.createObjectStore(STORE_TASKS, {
+            keyPath: 'id',
+            autoIncrement: true,
+          });
+          taskStore.createIndex('status', 'status', { unique: false });
+          taskStore.createIndex('createdAt', 'createdAt', { unique: false });
+        }
+
+        if (!db.objectStoreNames.contains(STORE_CHECK_RECORDS)) {
+          const checkStore = db.createObjectStore(STORE_CHECK_RECORDS, {
+            keyPath: 'id',
+            autoIncrement: true,
+          });
+          checkStore.createIndex('taskId', 'taskId', { unique: false });
+          checkStore.createIndex('gearId', 'gearId', { unique: false });
+          checkStore.createIndex('checkStatus', 'checkStatus', { unique: false });
+        }
       }
     },
   });
@@ -108,7 +131,9 @@ export function useIndexedDB() {
   const exportData = async (): Promise<string> => {
     const gears = await getAllGears();
     const history = await getRecentHistory(1000);
-    return JSON.stringify({ gears, history }, null, 2);
+    const tasks = await getAllTasks();
+    const checkRecords = await getAllCheckRecords();
+    return JSON.stringify({ gears, history, tasks, checkRecords }, null, 2);
   };
 
   const importData = async (jsonStr: string): Promise<{ success: number; failed: number }> => {
@@ -134,6 +159,75 @@ export function useIndexedDB() {
     return { success, failed };
   };
 
+  const getAllTasks = async (): Promise<InventoryTask[]> => {
+    const result = await (await db).getAll(STORE_TASKS);
+    return result as InventoryTask[];
+  };
+
+  const addTask = async (task: Omit<InventoryTask, 'id'>): Promise<number> => {
+    return (await db).add(STORE_TASKS, task) as Promise<number>;
+  };
+
+  const updateTask = async (task: InventoryTask): Promise<void> => {
+    await (await db).put(STORE_TASKS, task);
+  };
+
+  const deleteTask = async (id: number): Promise<void> => {
+    await (await db).delete(STORE_TASKS, id);
+  };
+
+  const getAllCheckRecords = async (): Promise<TaskCheckRecord[]> => {
+    const result = await (await db).getAll(STORE_CHECK_RECORDS);
+    return result as TaskCheckRecord[];
+  };
+
+  const getCheckRecordsByTask = async (taskId: number): Promise<TaskCheckRecord[]> => {
+    const tx = (await db).transaction(STORE_CHECK_RECORDS, 'readonly');
+    const store = tx.store;
+    const index = store.index('taskId');
+    const result: TaskCheckRecord[] = [];
+
+    let cursor = await index.openCursor(taskId);
+    while (cursor) {
+      result.push(cursor.value as TaskCheckRecord);
+      cursor = await cursor.continue();
+    }
+
+    await tx.done;
+    return result;
+  };
+
+  const addCheckRecord = async (record: Omit<TaskCheckRecord, 'id'>): Promise<number> => {
+    return (await db).add(STORE_CHECK_RECORDS, record) as Promise<number>;
+  };
+
+  const updateCheckRecord = async (record: TaskCheckRecord): Promise<void> => {
+    await (await db).put(STORE_CHECK_RECORDS, record);
+  };
+
+  const bulkAddCheckRecords = async (records: Omit<TaskCheckRecord, 'id'>[]): Promise<void> => {
+    const tx = (await db).transaction(STORE_CHECK_RECORDS, 'readwrite');
+    const store = tx.store;
+
+    for (const record of records) {
+      await store.add(record);
+    }
+
+    await tx.done;
+  };
+
+  const deleteCheckRecordsByTask = async (taskId: number): Promise<void> => {
+    const records = await getCheckRecordsByTask(taskId);
+    const tx = (await db).transaction(STORE_CHECK_RECORDS, 'readwrite');
+    const store = tx.store;
+
+    for (const record of records) {
+      await store.delete(record.id);
+    }
+
+    await tx.done;
+  };
+
   return {
     getAllGears,
     addGear,
@@ -145,5 +239,15 @@ export function useIndexedDB() {
     bulkDelete,
     exportData,
     importData,
+    getAllTasks,
+    addTask,
+    updateTask,
+    deleteTask,
+    getAllCheckRecords,
+    getCheckRecordsByTask,
+    addCheckRecord,
+    updateCheckRecord,
+    bulkAddCheckRecords,
+    deleteCheckRecordsByTask,
   };
 }
