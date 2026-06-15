@@ -98,8 +98,10 @@ export function useRestockStore() {
       if (!gear) return false;
 
       if (filters.responsiblePerson.trim()) {
-        const person = gear.responsiblePerson.trim() || record.handler.trim();
-        if (!person.includes(filters.responsiblePerson.trim())) {
+        const filterPerson = filters.responsiblePerson.trim();
+        const gearPerson = gear.responsiblePerson.trim();
+        const handlerPerson = record.handler.trim();
+        if (gearPerson !== filterPerson && handlerPerson !== filterPerson) {
           return false;
         }
       }
@@ -221,11 +223,22 @@ export function useRestockStore() {
     await updateRestockRecord(newRecord);
   };
 
+  const STATUS_ORDER: Record<RestockStatus, number> = {
+    pending: 0,
+    processing: 1,
+    completed: 2,
+  };
+
   const updateStatus = async (id: number, status: RestockStatus) => {
     const index = restockRecords.value.findIndex(r => r.id === id);
     if (index === -1) return;
 
     const oldRecord = restockRecords.value[index];
+
+    if (STATUS_ORDER[status] <= STATUS_ORDER[oldRecord.status]) {
+      return;
+    }
+
     const now = new Date().toISOString();
 
     const newRecord: RestockRecord = {
@@ -240,15 +253,15 @@ export function useRestockStore() {
       if (gear) {
         const addQty = Math.max(0, oldRecord.plannedQuantity);
         const newQuantity = gear.quantity + addQty;
-        let newStatus: RainGearStatus = gear.status;
+        let newGearStatus: RainGearStatus = gear.status;
         if (newQuantity >= gear.minStock && gear.status === 'needRefill') {
-          newStatus = 'available';
+          newGearStatus = 'available';
         }
 
         const updatedGear: RainGear = {
           ...gear,
           quantity: newQuantity,
-          status: newStatus,
+          status: newGearStatus,
           updatedAt: now,
         };
 
@@ -259,7 +272,7 @@ export function useRestockStore() {
           recordId: gear.id,
           fieldName: '补货完成',
           oldValue: `${gear.quantity}(${gear.status})`,
-          newValue: `${newQuantity}(${newStatus})`,
+          newValue: `${newQuantity}(${newGearStatus})`,
           modifiedAt: now,
         });
       }

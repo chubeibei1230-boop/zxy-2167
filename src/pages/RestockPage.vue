@@ -119,13 +119,17 @@ const handleCopySummary = async () => {
 
 const startEdit = (record: any) => {
   editingId.value = record.id;
+  let localTime = '';
+  if (record.estimatedCompletionTime) {
+    const d = new Date(record.estimatedCompletionTime);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    localTime = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
   editingForm.value = {
     plannedQuantity: record.plannedQuantity,
     handler: record.handler,
     note: record.note,
-    estimatedCompletionTime: record.estimatedCompletionTime
-      ? record.estimatedCompletionTime.slice(0, 16)
-      : '',
+    estimatedCompletionTime: localTime,
   };
 };
 
@@ -520,13 +524,6 @@ onMounted(() => {
               </div>
               <div class="h-5 w-px bg-violet-500/30"></div>
               <button
-                class="px-3 py-1.5 bg-orange-500/20 hover:bg-orange-500/30 text-orange-300 rounded-lg text-sm transition-all flex items-center gap-1 border border-orange-500/30"
-                @click="handleBatchStatus('pending')"
-              >
-                <Clock class="w-3.5 h-3.5" />
-                标记待处理
-              </button>
-              <button
                 class="px-3 py-1.5 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 rounded-lg text-sm transition-all flex items-center gap-1 border border-blue-500/30"
                 @click="handleBatchStatus('processing')"
               >
@@ -657,7 +654,7 @@ onMounted(() => {
                       <td class="px-4 py-3">
                         <div class="flex items-center gap-1">
                           <button
-                            v-if="record.status !== 'processing' && record.status !== 'completed'"
+                            v-if="record.status === 'pending'"
                             class="p-1.5 text-blue-400 hover:text-blue-300 hover:bg-blue-500/20 rounded transition-all"
                             title="标记处理中"
                             @click="handleStatusChange(record.id, 'processing')"
@@ -665,7 +662,7 @@ onMounted(() => {
                             <Play class="w-4 h-4" />
                           </button>
                           <button
-                            v-if="record.status !== 'completed'"
+                            v-if="record.status === 'pending' || record.status === 'processing'"
                             class="p-1.5 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 rounded transition-all"
                             title="标记已完成"
                             @click="handleStatusChange(record.id, 'completed')"
@@ -673,14 +670,7 @@ onMounted(() => {
                             <CheckCircle2 class="w-4 h-4" />
                           </button>
                           <button
-                            v-if="record.status !== 'pending'"
-                            class="p-1.5 text-orange-400 hover:text-orange-300 hover:bg-orange-500/20 rounded transition-all"
-                            title="标记待处理"
-                            @click="handleStatusChange(record.id, 'pending')"
-                          >
-                            <Clock class="w-4 h-4" />
-                          </button>
-                          <button
+                            v-if="record.status !== 'completed'"
                             class="p-1.5 text-sky-400 hover:text-sky-300 hover:bg-sky-500/20 rounded transition-all"
                             title="编辑"
                             @click="startEdit(record)"
