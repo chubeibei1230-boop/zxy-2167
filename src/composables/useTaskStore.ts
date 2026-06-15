@@ -1,4 +1,4 @@
-import { ref, computed, reactive } from 'vue';
+import { ref, computed } from 'vue';
 import type { InventoryTask, TaskCheckRecord, CheckStatus, RainGear, TaskConclusion } from '@/types';
 import { useIndexedDB } from './useIndexedDB';
 
@@ -18,8 +18,8 @@ export function useTaskStore() {
 
   const tasks = ref<InventoryTask[]>([]);
   const currentTask = ref<InventoryTask | null>(null);
-  const checkRecords = ref<TaskCheckRecord[]>([]);
-  const gears = ref<RainGear[]>([]);
+  const _rawCheckRecords = ref<TaskCheckRecord[]>([]);
+  const _rawGears = ref<RainGear[]>([]);
   const isLoading = ref(false);
   const statusFilter = ref<CheckStatus | 'all'>('all');
 
@@ -27,6 +27,13 @@ export function useTaskStore() {
     if (task.status === 'completed') return false;
     return new Date(task.plannedCompletionTime) < new Date();
   };
+
+  const checkRecords = computed(() => {
+    const validGearIds = new Set(_rawGears.value.map(g => g.id));
+    return _rawCheckRecords.value.filter(r => validGearIds.has(r.gearId));
+  });
+
+  const gears = computed(() => _rawGears.value);
 
   const filteredCheckRecords = computed(() => {
     if (statusFilter.value === 'all') return checkRecords.value;
@@ -76,8 +83,24 @@ export function useTaskStore() {
         getCheckRecordsByTask(taskId),
         getAllGears(),
       ]);
-      checkRecords.value = records;
-      gears.value = allGears.sort((a, b) => a.cabinetNo.localeCompare(b.cabinetNo));
+      _rawCheckRecords.value = records;
+      _rawGears.value = allGears.sort((a, b) => a.cabinetNo.localeCompare(b.cabinetNo));
+
+      const existingGearIds = new Set(_rawCheckRecords.value.map(r => r.gearId));
+      const missingGears = _rawGears.value.filter(g => !existingGearIds.has(g.id));
+
+      if (missingGears.length > 0) {
+        const newRecords: Omit<TaskCheckRecord, 'id'>[] = missingGears.map(gear => ({
+          taskId,
+          gearId: gear.id,
+          checkStatus: 'unchecked' as CheckStatus,
+          actionNote: '',
+          checkedAt: '',
+        }));
+        await bulkAddCheckRecords(newRecords);
+        const allRecords = await getCheckRecordsByTask(taskId);
+        _rawCheckRecords.value = allRecords;
+      }
     } finally {
       isLoading.value = false;
     }
@@ -109,7 +132,9 @@ export function useTaskStore() {
       actionNote: '',
       checkedAt: '',
     }));
-    await bulkAddCheckRecords(checkRecordData);
+    if (checkRecordData.length > 0) {
+      await bulkAddCheckRecords(checkRecordData);
+    }
 
     await loadTasks();
     return taskId;
@@ -121,13 +146,22 @@ export function useTaskStore() {
     tasks.value = tasks.value.filter(t => t.id !== taskId);
     if (currentTask.value?.id === taskId) {
       currentTask.value = null;
-      checkRecords.value = [];
+      _rawCheckRecords.value = [];
     }
   };
 
   const completeTask = async (taskId: number) => {
-    const task = tasks.value.find(t => t.id === taskId);
-    if (!task) return;
+    let task: InventoryTask | undefined;
+    if (currentTask.value?.id === taskId) {
+      task = currentTask.value;
+    } else {
+      task = tasks.value.find(t => t.id === taskId);
+    }
+    if (!task) {
+      const allTasks = await getAllTasks();
+      task = allTasks.find(t => t.id === taskId);
+      if (!task) return;
+    }
     const updated = { ...task, status: 'completed' as const, updatedAt: new Date().toISOString() };
     await updateTask(updated);
     tasks.value = tasks.value.map(t => t.id === taskId ? updated : t);
@@ -137,41 +171,44 @@ export function useTaskStore() {
   };
 
   const updateCheckStatus = async (recordId: number, status: CheckStatus, note?: string) => {
-    const index = checkRecords.value.findIndex(r => r.id === recordId);
+    const index = _rawCheckRecords.value.findIndex(r => r.id === recordId);
     if (index === -1) return;
 
     const updated = {
-      ...checkRecords.value[index],
+      ..._rawCheckRecords.value[index],
       checkStatus: status,
-      actionNote: note !== undefined ? note : checkRecords.value[index].actionNote,
+      actionNote: note !== undefined ? note : _rawCheckRecords.value[index].actionNote,
       checkedAt: status !== 'unchecked' ? new Date().toISOString() : '',
     };
     await updateCheckRecord(updated);
-    checkRecords.value[index] = updated;
+    _rawCheckRecords.value[index] = updated;
   };
 
   const updateActionNote = async (recordId: number, note: string) => {
-    const index = checkRecords.value.findIndex(r => r.id === recordId);
+    const index = _rawCheckRecords.value.findIndex(r => r.id === recordId);
     if (index === -1) return;
 
     const updated = {
-      ...checkRecords.value[index],
+      ..._rawCheckRecords.value[index],
       actionNote: note,
     };
     await updateCheckRecord(updated);
-    checkRecords.value[index] = updated;
+    _rawCheckRecords.value[index] = updated;
   };
 
   const getGearForRecord = (record: TaskCheckRecord): RainGear | undefined => {
-    return gears.value.find(g => g.id === record.gearId);
+    return _rawGears.value.find(g => g.id === record.gearId);
   };
 
   const generateConclusion = (): TaskConclusion | null => {
     if (!currentTask.value || !isAllChecked.value) return null;
 
+    const taskGearIds = new Set(checkRecords.value.map(r => r.gearId));
+    const taskGears = _rawGears.value.filter(g => taskGearIds.has(g.id));
+
     const duplicateCabinets: string[] = [];
     const cabinetMap = new Map<string, number[]>();
-    gears.value.forEach(g => {
+    taskGears.forEach(g => {
       const c = g.cabinetNo.trim();
       if (!c) return;
       if (!cabinetMap.has(c)) cabinetMap.set(c, []);
@@ -181,8 +218,8 @@ export function useTaskStore() {
       if (ids.length > 1) duplicateCabinets.push(cabinetNo);
     }
 
-    const gapItems = gears.value.filter(g => g.quantity < g.minStock && g.status !== 'closed');
-    const emptyResponsible = gears.value.filter(g => !g.responsiblePerson.trim());
+    const gapItems = taskGears.filter(g => g.quantity < g.minStock && g.status !== 'closed');
+    const emptyResponsible = taskGears.filter(g => !g.responsiblePerson.trim());
 
     const actionNotes = checkRecords.value
       .filter(r => r.checkStatus === 'needsAction' && r.actionNote.trim())
@@ -208,11 +245,17 @@ export function useTaskStore() {
     const lines: string[] = [];
     const task = currentTask.value!;
     const now = new Date().toLocaleString('zh-CN');
+    const personText = task.responsiblePerson && task.responsiblePerson.trim()
+      ? task.responsiblePerson
+      : '未指定';
+    const scopeText = task.scope && task.scope.trim()
+      ? task.scope
+      : '未填写';
 
     lines.push(`📋 盘点结论摘要 — ${task.name}`);
     lines.push(`📅 盘点时间：${now}`);
-    lines.push(`👤 负责人：${task.responsiblePerson}`);
-    lines.push(`📝 盘点范围：${task.scope}`);
+    lines.push(`👤 负责人：${personText}`);
+    lines.push(`📝 盘点范围：${scopeText}`);
     lines.push('');
 
     lines.push(`【统计概览】`);
