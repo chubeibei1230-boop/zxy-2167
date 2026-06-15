@@ -3,6 +3,7 @@ import HomePage from '@/pages/HomePage.vue'
 import TaskListPage from '@/pages/TaskListPage.vue'
 import TaskDetailPage from '@/pages/TaskDetailPage.vue'
 import RestockPage from '@/pages/RestockPage.vue'
+import BorrowPage from '@/pages/BorrowPage.vue'
 
 const routes = [
   {
@@ -24,6 +25,11 @@ const routes = [
     path: '/restock',
     name: 'restock',
     component: RestockPage,
+  },
+  {
+    path: '/borrow',
+    name: 'borrow',
+    component: BorrowPage,
   },
 ]
 

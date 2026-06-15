@@ -1,14 +1,15 @@
 import { openDB } from 'idb';
 import type { IDBPDatabase } from 'idb';
-import type { RainGear, ModifyHistory, InventoryTask, TaskCheckRecord, RestockRecord } from '@/types';
+import type { RainGear, ModifyHistory, InventoryTask, TaskCheckRecord, RestockRecord, BorrowRecord } from '@/types';
 
 const DB_NAME = 'rain_gear_db';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const STORE_GEARS = 'rain_gears';
 const STORE_HISTORY = 'modify_history';
 const STORE_TASKS = 'inventory_tasks';
 const STORE_CHECK_RECORDS = 'task_check_records';
 const STORE_RESTOCK_RECORDS = 'restock_records';
+const STORE_BORROW_RECORDS = 'borrow_records';
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
@@ -67,6 +68,19 @@ function initDB(): Promise<IDBPDatabase> {
           restockStore.createIndex('status', 'status', { unique: false });
           restockStore.createIndex('createdAt', 'createdAt', { unique: false });
           restockStore.createIndex('sourceTaskId', 'sourceTaskId', { unique: false });
+        }
+      }
+
+      if (oldVersion < 4) {
+        if (!db.objectStoreNames.contains(STORE_BORROW_RECORDS)) {
+          const borrowStore = db.createObjectStore(STORE_BORROW_RECORDS, {
+            keyPath: 'id',
+            autoIncrement: true,
+          });
+          borrowStore.createIndex('gearId', 'gearId', { unique: false });
+          borrowStore.createIndex('status', 'status', { unique: false });
+          borrowStore.createIndex('createdAt', 'createdAt', { unique: false });
+          borrowStore.createIndex('borrower', 'borrower', { unique: false });
         }
       }
     },
@@ -148,7 +162,8 @@ export function useIndexedDB() {
     const tasks = await getAllTasks();
     const checkRecords = await getAllCheckRecords();
     const restockRecords = await getAllRestockRecords();
-    return JSON.stringify({ gears, history, tasks, checkRecords, restockRecords }, null, 2);
+    const borrowRecords = await getAllBorrowRecords();
+    return JSON.stringify({ gears, history, tasks, checkRecords, restockRecords, borrowRecords }, null, 2);
   };
 
   const importData = async (jsonStr: string): Promise<{ success: number; failed: number }> => {
@@ -287,6 +302,23 @@ export function useIndexedDB() {
     await tx.done;
   };
 
+  const getAllBorrowRecords = async (): Promise<BorrowRecord[]> => {
+    const result = await (await db).getAll(STORE_BORROW_RECORDS);
+    return result as BorrowRecord[];
+  };
+
+  const addBorrowRecord = async (record: Omit<BorrowRecord, 'id'>): Promise<number> => {
+    return (await db).add(STORE_BORROW_RECORDS, record) as Promise<number>;
+  };
+
+  const updateBorrowRecord = async (record: BorrowRecord): Promise<void> => {
+    await (await db).put(STORE_BORROW_RECORDS, record);
+  };
+
+  const deleteBorrowRecord = async (id: number): Promise<void> => {
+    await (await db).delete(STORE_BORROW_RECORDS, id);
+  };
+
   return {
     getAllGears,
     addGear,
@@ -314,5 +346,9 @@ export function useIndexedDB() {
     updateRestockRecord,
     deleteRestockRecord,
     bulkAddRestockRecords,
+    getAllBorrowRecords,
+    addBorrowRecord,
+    updateBorrowRecord,
+    deleteBorrowRecord,
   };
 }

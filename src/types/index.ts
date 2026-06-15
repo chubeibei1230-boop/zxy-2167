@@ -142,6 +142,55 @@ export const RESTOCK_STATUS_COLORS: Record<RestockStatus, string> = {
   completed: 'bg-emerald-500',
 };
 
+export type BorrowStatus = 'borrowed' | 'returned' | 'overdue' | 'lost' | 'damaged';
+
+export interface BorrowRecord {
+  id: number;
+  gearId: number;
+  borrowQuantity: number;
+  borrower: string;
+  contactInfo: string;
+  purpose: string;
+  expectedReturnTime: string;
+  actualReturnTime: string;
+  actualReturnQuantity: number;
+  damageNote: string;
+  status: BorrowStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BorrowFilterOptions {
+  cabinetNo: string;
+  borrower: string;
+  statuses: BorrowStatus[];
+  showOverdueOnly: boolean;
+}
+
+export const BORROW_STATUS_LABELS: Record<BorrowStatus, string> = {
+  borrowed: '借出中',
+  returned: '已归还',
+  overdue: '已逾期',
+  lost: '已丢失',
+  damaged: '已损坏',
+};
+
+export const BORROW_STATUS_COLORS: Record<BorrowStatus, string> = {
+  borrowed: 'bg-amber-500',
+  returned: 'bg-emerald-500',
+  overdue: 'bg-red-500',
+  lost: 'bg-gray-600',
+  damaged: 'bg-orange-500',
+};
+
+export const BORROW_STATUS_TEXT_COLORS: Record<BorrowStatus, string> = {
+  borrowed: 'text-amber-400',
+  returned: 'text-emerald-400',
+  overdue: 'text-red-400',
+  lost: 'text-gray-400',
+  damaged: 'text-orange-400',
+};
+
 export const RESTOCK_STATUS_TEXT_COLORS: Record<RestockStatus, string> = {
   pending: 'text-orange-400',
   processing: 'text-blue-400',
