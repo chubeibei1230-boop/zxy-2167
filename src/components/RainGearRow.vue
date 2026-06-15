@@ -40,9 +40,13 @@ const gapAmount = computed(() => {
 
 const handleInput = (field: keyof RainGear, value: any) => {
   const oldValue = localItem.value[field];
-  const parsedValue = field === 'quantity' || field === 'minStock'
-    ? parseInt(value, 10) || 0
-    : value;
+  let parsedValue: any = value;
+
+  if (field === 'quantity' || field === 'minStock') {
+    parsedValue = Math.max(0, parseInt(value, 10) || 0);
+  } else if (field === 'cabinetNo' || field === 'responsiblePerson') {
+    parsedValue = value;
+  }
 
   (localItem.value as any)[field] = parsedValue;
 

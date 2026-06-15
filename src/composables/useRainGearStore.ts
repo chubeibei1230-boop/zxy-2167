@@ -57,11 +57,12 @@ export function useRainGearStore() {
   const duplicateCabinets = computed(() => {
     const map = new Map<string, number[]>();
     items.value.forEach(item => {
-      if (!item.cabinetNo.trim()) return;
-      if (!map.has(item.cabinetNo)) {
-        map.set(item.cabinetNo, []);
+      const normalizedCabinet = item.cabinetNo.trim();
+      if (!normalizedCabinet) return;
+      if (!map.has(normalizedCabinet)) {
+        map.set(normalizedCabinet, []);
       }
-      map.get(item.cabinetNo)!.push(item.id);
+      map.get(normalizedCabinet)!.push(item.id);
     });
     return Array.from(map.entries())
       .filter(([, ids]) => ids.length > 1)
@@ -77,11 +78,13 @@ export function useRainGearStore() {
   });
 
   const filteredItems = computed(() => {
+    const filterCabinet = filters.cabinetNo.trim();
+    const filterResponsible = filters.responsiblePerson.trim();
     return items.value.filter(item => {
-      if (filters.cabinetNo && !item.cabinetNo.includes(filters.cabinetNo)) {
+      if (filterCabinet && !item.cabinetNo.trim().includes(filterCabinet)) {
         return false;
       }
-      if (filters.responsiblePerson && item.responsiblePerson !== filters.responsiblePerson) {
+      if (filterResponsible && item.responsiblePerson.trim() !== filterResponsible) {
         return false;
       }
       if (filters.statuses.length > 0 && !filters.statuses.includes(item.status)) {
@@ -109,7 +112,7 @@ export function useRainGearStore() {
   });
 
   const isCabinetDuplicate = (cabinetNo: string): boolean => {
-    return duplicateCabinets.value.includes(cabinetNo);
+    return duplicateCabinets.value.includes(cabinetNo.trim());
   };
 
   const loadData = async () => {
@@ -189,12 +192,13 @@ export function useRainGearStore() {
     const prefix = prefix2 || prefix1;
     const start = parseInt(startStr, 10);
     const end = parseInt(endStr, 10);
+    const padLength = Math.max(startStr.length, endStr.length);
 
     if (isNaN(start) || isNaN(end) || start > end) return [rangeStr];
 
     const cabinets: string[] = [];
     for (let i = start; i <= end; i++) {
-      cabinets.push(`${prefix}${i}`);
+      cabinets.push(`${prefix}${String(i).padStart(padLength, '0')}`);
     }
     return cabinets;
   };
@@ -202,11 +206,11 @@ export function useRainGearStore() {
   const fillContinuousCabinets = async (rangeStr: string, baseItem?: Partial<RainGear>) => {
     const cabinets = parseCabinetRange(rangeStr);
     const newItems: RainGear[] = [];
+    const existingCabinets = new Set(items.value.map(item => item.cabinetNo.trim()));
 
     for (const cabinetNo of cabinets) {
-      const exists = items.value.some(item => item.cabinetNo === cabinetNo);
-      if (!exists) {
-        const newItem = await addItem({ ...baseItem, cabinetNo });
+      if (!existingCabinets.has(cabinetNo.trim())) {
+        const newItem = await addItem({ ...baseItem, cabinetNo: cabinetNo.trim() });
         newItems.push(newItem);
       }
     }
@@ -219,10 +223,25 @@ export function useRainGearStore() {
     if (index === -1) return;
 
     const oldItem = { ...items.value[index] };
-    const newItem = { ...oldItem, ...updates, updatedAt: new Date().toISOString() };
+    const sanitizedUpdates: Partial<RainGear> = { ...updates };
+
+    if (sanitizedUpdates.cabinetNo !== undefined) {
+      sanitizedUpdates.cabinetNo = sanitizedUpdates.cabinetNo.trim();
+    }
+    if (sanitizedUpdates.quantity !== undefined) {
+      sanitizedUpdates.quantity = Math.max(0, Number(sanitizedUpdates.quantity) || 0);
+    }
+    if (sanitizedUpdates.minStock !== undefined) {
+      sanitizedUpdates.minStock = Math.max(0, Number(sanitizedUpdates.minStock) || 0);
+    }
+    if (sanitizedUpdates.responsiblePerson !== undefined) {
+      sanitizedUpdates.responsiblePerson = sanitizedUpdates.responsiblePerson.trim();
+    }
+
+    const newItem = { ...oldItem, ...sanitizedUpdates, updatedAt: new Date().toISOString() };
 
     const changedFields: string[] = [];
-    for (const key of Object.keys(updates)) {
+    for (const key of Object.keys(sanitizedUpdates)) {
       const k = key as keyof RainGear;
       if (String(oldItem[k]) !== String(newItem[k])) {
         changedFields.push(key);
@@ -234,6 +253,9 @@ export function useRainGearStore() {
         const isNowGap = newItem.quantity < newItem.minStock;
         if (isNowGap && newItem.status === 'available') {
           newItem.status = 'needRefill';
+          if (!changedFields.includes('status')) {
+            changedFields.push('status');
+          }
         }
       }
 
@@ -287,7 +309,8 @@ export function useRainGearStore() {
   });
 
   const batchUpdateStatus = async (status: RainGearStatus) => {
-    const ids = Array.from(selectedIds.value);
+    const filteredIdSet = new Set(filteredItems.value.map(item => item.id));
+    const ids = Array.from(selectedIds.value).filter(id => filteredIdSet.has(id));
     if (ids.length === 0) return;
 
     await bulkUpdateStatus(ids, status);
@@ -308,11 +331,13 @@ export function useRainGearStore() {
   };
 
   const batchRemove = async () => {
-    const ids = Array.from(selectedIds.value);
+    const filteredIdSet = new Set(filteredItems.value.map(item => item.id));
+    const ids = Array.from(selectedIds.value).filter(id => filteredIdSet.has(id));
     if (ids.length === 0) return;
 
     await bulkDelete(ids);
-    items.value = items.value.filter(item => !selectedIds.value.has(item.id));
+    const idSetToRemove = new Set(ids);
+    items.value = items.value.filter(item => !idSetToRemove.has(item.id));
     selectedIds.value.clear();
   };
 
@@ -329,6 +354,12 @@ export function useRainGearStore() {
 
   const setFilter = (key: keyof FilterOptions, value: any) => {
     (filters as any)[key] = value;
+    const filteredIdSet = new Set(filteredItems.value.map(item => item.id));
+    selectedIds.value.forEach(id => {
+      if (!filteredIdSet.has(id)) {
+        selectedIds.value.delete(id);
+      }
+    });
   };
 
   const toggleStatusFilter = (status: RainGearStatus) => {
